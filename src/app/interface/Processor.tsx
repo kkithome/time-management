@@ -1,57 +1,53 @@
-'use client'
+"use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from 'react'
-import Link from 'next/link'
-import Papa from 'papaparse'
-import { firstName } from './names'
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
+import Papa from "papaparse";
+import { firstName } from "./names";
 
-
-const fileInputRef = useRef<HTMLInputElement>(null)
-
-type ConditionCode = '1' | '2' | '3' | '4'
-type Group = 'control' | 'treatment'
+type ConditionCode = "1" | "2" | "3" | "4";
+type Group = "control" | "treatment";
 
 type Parsed = {
-    fileName: string
-    headers: string[]
-    rows: string[][]
-    conditions: ConditionCode[]
-}
+  fileName: string;
+  headers: string[];
+  rows: string[][];
+  // Assigned once per uploaded file, so changing the name column never reshuffles anyone.
+  conditions: ConditionCode[];
+};
 
 type PreviewRow = {
-    participantNumber: string
-    name: string
-    conditionNumber: ConditionCode
-    group: Group
-    link: string
+  participantNumber: string;
+  name: string;
+  conditionNumber: ConditionCode;
+  group: Group;
+  link: string;
+};
+
+const PREVIEW_ROWS = 5;
+
+// Conditions 1 and 2 are control; 3 and 4 are treatment.
+function groupFor(conditionNumber: ConditionCode): Group {
+  return conditionNumber === "1" || conditionNumber === "2"
+    ? "control"
+    : "treatment";
 }
 
-const PREVIEW_ROWS = 5
-
-type Result = {
-    csv: string
-    counts: Record<ConditionCode, number>
-}
-
-function groupFor(conditionNumber: ConditionCode): 'control' | 'treatment' {
-    return conditionNumber === '1' || conditionNumber === '2' ? 'control' : 'treatment'
-}
-
+// Fisher–Yates shuffle (returns a new array).
 function shuffle<T>(items: T[]): T[] {
-    const result = [...items]
-    for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i+1))
-        ; [result[i], result[j]] = [result[j], result[i]]
-    }
-    return result
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 export default function Processor() {
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [nameColumn, setNameColumn] = useState(0);
   const [error, setError] = useState<string | null>(null);
-
-
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -76,6 +72,8 @@ export default function Processor() {
       /name/i.test(header),
     );
 
+    // Repeating 1,2,3,4,1,2,3,4,... keeps the groups as balanced as possible,
+    // then shuffling randomizes which recipient gets which condition.
     const orderedConditions = Array.from(
       { length: rows.length },
       (_, index) => String((index % 4) + 1) as ConditionCode,
@@ -90,13 +88,15 @@ export default function Processor() {
     });
   }
 
-  function clearParticipants () {
-    setParsed(null)
-    setNameColumn(0)
-    setError(null)
-    if (fileInputRef.current) fileInputRef.current.value = ' '
+  function clearParticipants() {
+    setParsed(null);
+    setNameColumn(0);
+    setError(null);
+    // Reset the file input so choosing the same file again still triggers onChange.
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  // Rebuilt whenever the file or the chosen name column changes.
   const output = useMemo(() => {
     if (!parsed) return null;
     const { rows, conditions } = parsed;
@@ -109,9 +109,11 @@ export default function Processor() {
     };
     const preview: PreviewRow[] = [];
 
+    // The output file has only these five columns; no other columns from the upload are kept.
     const outputRows: string[][] = [
       [
         "participantNumber",
+        "name",
         "conditionNumber",
         "condition",
         "personalizedLink",
@@ -122,7 +124,8 @@ export default function Processor() {
       const participantNumber = String(index + 1).padStart(4, "0");
       const conditionNumber = conditions[index];
       const group = groupFor(conditionNumber);
-      const name = firstName(row[nameColumn] ?? '');
+      // Only the first name goes into the link and the preview.
+      const name = firstName(row[nameColumn] ?? "");
       counts[conditionNumber] += 1;
 
       const link =
@@ -131,14 +134,7 @@ export default function Processor() {
         `&participantNumber=${participantNumber}` +
         `&conditionNumber=${conditionNumber}`;
 
-
-      outputRows.push([
-        participantNumber,
-        name,
-        conditionNumber,
-        group,
-        link,
-      ]);
+      outputRows.push([participantNumber, name, conditionNumber, group, link]);
 
       if (index < PREVIEW_ROWS) {
         preview.push({ participantNumber, name, conditionNumber, group, link });
@@ -166,13 +162,15 @@ export default function Processor() {
 
   return (
     <main className="processor-shell">
+      {/* gridTemplateColumns is overridden because there is no logo <img> in the first column.
+          Add your logo as the first child and remove the style prop to restore the 2-column layout. */}
       <header
         className="processor-header"
         style={{ gridTemplateColumns: "1fr" }}
       >
         <div>
           <span>Study tools</span>
-          <h1>Participant Link Generator</h1>
+          <h1>Participant link generator</h1>
           <p>
             Upload a participant list and get back a CSV with balanced condition
             assignments and a personalized link for each person.
@@ -185,7 +183,7 @@ export default function Processor() {
         <section className="step">
           <div className="step-number">1</div>
           <div className="step-content">
-            <h2>Upload your Participant List</h2>
+            <h2>Upload your participant list</h2>
             <p>
               A CSV with a header row. Everything is processed in your browser;
               the file is not uploaded anywhere.
@@ -207,9 +205,8 @@ export default function Processor() {
                 className="file-input"
                 style={{ marginLeft: 10 }}
                 onClick={clearParticipants}
-                >
-                  Clear Participants
-
+              >
+                Clear participants
               </button>
             )}
 
@@ -228,7 +225,7 @@ export default function Processor() {
         <section className={`step${parsed ? "" : " disabled-step"}`}>
           <div className="step-number">2</div>
           <div className="step-content">
-            <h2>Choose the Name Column</h2>
+            <h2>Choose the name column</h2>
             <p>Only the first name is used to personalize each link.</p>
 
             <div className="configuration">
@@ -280,7 +277,7 @@ export default function Processor() {
                   <thead>
                     <tr>
                       <th>Participant</th>
-                      <th>First Name</th>
+                      <th>First name</th>
                       <th>Code</th>
                       <th>Condition</th>
                       <th>Link</th>
@@ -320,4 +317,3 @@ export default function Processor() {
     </main>
   );
 }
- 
