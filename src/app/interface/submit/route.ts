@@ -169,7 +169,19 @@ export async function POST(request: Request) {
 
 
   try {
-    await sql`
+  const dbInfo = await sql`
+    SELECT
+      current_database() AS database_name,
+      current_schema() AS schema_name,
+      current_setting('search_path') AS search_path,
+      to_regclass('public.research_responses') AS public_table,
+      to_regclass('research_responses') AS visible_table
+  `;
+
+  console.log("Database diagnostics:", dbInfo[0]);
+
+  await sql`
+    INSERT INTO research_responses (
       INSERT INTO research_responses (
         participant_number,
         condition_number,
