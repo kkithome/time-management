@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
-import { firstName } from "./names";
+
 
 type ConditionCode = "1" | "2" | "3" | "4";
 type Group = "control" | "treatment";
@@ -196,44 +196,9 @@ export default function Processor() {
     if (!output || !parsed) return;
 
     setBusy(true);
-    setSaveMessage(null);
-
-    let saveError: string | null = null;
-
-    try {
-      const response = await fetch("/interface/names", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          names: parsed.rows.map((row, index) => ({
-            token: parsed.tokens[index],
-            firstName: firstName(row[nameColumn] ?? ""),
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        saveError =
-          data?.error ?? `The server returned status ${response.status}.`;
-      }
-    } catch {
-      saveError = "Could not reach the server.";
-    }
 
     downloadCsv();
 
-    setSaveMessage(
-      saveError
-        ? {
-            kind: "error",
-            text: `CSV downloaded, but the names were not saved: ${saveError} Pages will greet people without a name until they are saved. Fix the problem and click the button again.`,
-          }
-        : {
-            kind: "ok",
-            text: "Names saved and the CSV downloaded. The links are ready to send.",
-          },
-    );
     setBusy(false);
   }
 
@@ -263,7 +228,7 @@ export default function Processor() {
         <section className="step">
           <div className="step-number">1</div>
           <div className="step-content">
-            <h2>Upload your participant list</h2>
+            <h2>Upload Your Participant List</h2>
             <p>
               A CSV with a header row. The file is processed in your browser.
               When you download, each participant&apos;s first name is saved on
@@ -288,7 +253,7 @@ export default function Processor() {
                 style={{ marginLeft: 10 }}
                 onClick={clearParticipants}
               >
-                Clear participants
+                Clear Participants
               </button>
             )}
 
@@ -303,41 +268,7 @@ export default function Processor() {
           </div>
         </section>
 
-        {/* Step 2 */}
-        <section className={`step${parsed ? "" : " disabled-step"}`}>
-          <div className="step-number">2</div>
-          <div className="step-content">
-            <h2>Choose the Name Column</h2>
-            <p>
-              Only the first name is used, to greet each participant on their
-              page. Names are not in the links or in your downloaded file.
-            </p>
-
-            <div className="configuration">
-              <label>
-                Name column
-                <select
-                  value={nameColumn}
-                  disabled={!parsed}
-                  onChange={(event) =>
-                    setNameColumn(Number(event.target.value))
-                  }
-                >
-                  {parsed ? (
-                    parsed.headers.map((header, index) => (
-                      <option key={index} value={index}>
-                        {header || `Column ${index + 1}`}
-                      </option>
-                    ))
-                  ) : (
-                    <option>—</option>
-                  )}
-                </select>
-              </label>
-            </div>
-          </div>
-        </section>
-
+       
         {/* Step 3 */}
         <section className={`step${output ? "" : " disabled-step"}`}>
           <div className="step-number">3</div>
@@ -356,7 +287,7 @@ export default function Processor() {
                 onClick={saveAndDownload}
                 disabled={!output || busy}
               >
-                {busy ? "Saving…" : "Save names & download CSV"}
+                {busy ? "Saving…" : "Download CSV"}
               </button>
             </div>
 

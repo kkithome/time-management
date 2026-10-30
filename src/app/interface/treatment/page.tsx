@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import ConfirmationApp from "../ConfirmationApp";
-import { getFirstName } from "@/lib/participant-names";
 
 type SearchParams = Promise<{
   participantNumber?: string;
@@ -18,12 +17,10 @@ async function TreatmentContent({
 
   // The link carries no name. The first name is looked up on the server from the
   // link's random token, and is used only for the greeting.
-  const participantName = await getFirstName(params.token || "");
 
   return (
     <ConfirmationApp
       condition="treatment"
-      participantName={participantName}
       participantNumber={params.participantNumber || ""}
       conditionNumber={params.conditionNumber || ""}
     />

@@ -5,7 +5,6 @@ import { downloadWorkshopCalendar, getWorkshopDisplay } from "./calendar";
 
 type Props = {
   condition: "control" | "treatment";
-  participantName: string;
   participantNumber: string;
   conditionNumber: string;
 };
@@ -24,7 +23,6 @@ function Shell({ children }: { children: ReactNode }) {
 
 export default function ConfirmationApp({
   condition,
-  participantName,
   participantNumber,
   conditionNumber,
 }: Props) {
@@ -150,12 +148,7 @@ export default function ConfirmationApp({
             </div>
 
             <h1 className="greeting">
-              Thank you
-              {participantName && (
-                <>
-                  , <strong>{participantName}</strong>
-                </>
-              )}
+              Thank you! 
             </h1>
 
             <p className="intro" style={{ margin: "0 auto" }}>
@@ -197,13 +190,8 @@ export default function ConfirmationApp({
     <Shell>
       <section className="confirmation-card">
         <h1 className="greeting">
-          Welcome
-          {participantName && (
-            <>
-              , <strong>{participantName}</strong>
-            </>
-          )}
-        </h1>
+          Welcome to your Confirmation Interface!
+          </h1>
 
         {participantNumber && (
           <p className="participant-number">
