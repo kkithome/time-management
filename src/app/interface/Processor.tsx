@@ -133,8 +133,28 @@ export default function Processor() {
       ["participantNumber", "conditionNumber", "condition", "personalizedLink"],
     ];
 
-    rows.forEach((_, index) => {
-      const participantNumber = String(index + 1).padStart(4, "0");
+    // Find the ID column in the CSV header.
+    const idColumn = parsed.headers.findIndex(
+      (header) => header.trim().toLowerCase() === "id",
+    );
+
+    if (idColumn === -1) {
+      throw new Error("Your CSV must contain an ID column.");
+    }
+
+    rows.forEach((row, index) => {
+      const participantID = row[idColumn]?.trim() ?? "";
+
+      // Extract the numeric portion of IDs such as ID-001.
+      const match = participantID.match(/^ID-(\d+)$/i);
+
+      if (!match) {
+        throw new Error(
+          `Invalid participant ID "${participantID}". Expected format: ID-001.`,
+        );
+      }
+
+      const participantNumber = match[1];
       const conditionNumber = conditions[index];
       const group = groupFor(conditionNumber);
       counts[conditionNumber] += 1;
