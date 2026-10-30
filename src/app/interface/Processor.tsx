@@ -56,17 +56,20 @@ function shuffle<T>(items: T[]): T[] {
 export default function Processor() {
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [nameColumn, setNameColumn] = useState(0);
-  const [adminKey, setAdminKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Result of the last "save names" attempt, shown next to the download button.
+  const [saveMessage, setSaveMessage] = useState<{
+    kind: "ok" | "error";
+    text: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setParsed(null);
     setError(null);
-    setNotice(null);
+    setSaveMessage(null);
     if (!file) return;
 
     const text = await file.text();
@@ -107,7 +110,7 @@ export default function Processor() {
     setParsed(null);
     setNameColumn(0);
     setError(null);
-    setNotice(null);
+    setSaveMessage(null);
     // Reset the file input so choosing the same file again still triggers onChange.
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -154,26 +157,33 @@ export default function Processor() {
     return { csv: Papa.unparse(outputRows), counts, preview };
   }, [parsed]);
 
-  // Saves first names on the server (so the links can greet people), then downloads the CSV.
-  // If saving fails nothing is downloaded, so you never send out links that can't show a name.
+  function downloadCsv() {
+    if (!output || !parsed) return;
+    const blob = new Blob([output.csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download =
+      parsed.fileName.replace(/\.csv$/i, "") + "-with-links.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Always downloads the CSV. It also tries to save first names on the server so the pages
+  // can greet people. If saving fails the CSV is still downloaded (the links work either
+  // way), and the problem is shown next to the button. Saving again is safe to repeat.
   async function saveAndDownload() {
     if (!output || !parsed) return;
-    if (!adminKey) {
-      setError("Enter the admin key first.");
-      return;
-    }
 
     setBusy(true);
-    setError(null);
-    setNotice(null);
+    setSaveMessage(null);
+
+    let saveError: string | null = null;
 
     try {
       const response = await fetch("/interface/names", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": adminKey,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           names: parsed.rows.map((row, index) => ({
             token: parsed.tokens[index],
@@ -184,32 +194,27 @@ export default function Processor() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(
-          response.status === 401
-            ? "The admin key is incorrect."
-            : (data?.error ?? "Could not save the names."),
-        );
+        saveError =
+          data?.error ?? `The server returned status ${response.status}.`;
       }
-
-      const blob = new Blob([output.csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download =
-        parsed.fileName.replace(/\.csv$/i, "") + "-with-links.csv";
-      anchor.click();
-      URL.revokeObjectURL(url);
-
-      setNotice(
-        "Names saved and the CSV downloaded. The links are ready to send.",
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not save the names.",
-      );
-    } finally {
-      setBusy(false);
+    } catch {
+      saveError = "Could not reach the server.";
     }
+
+    downloadCsv();
+
+    setSaveMessage(
+      saveError
+        ? {
+            kind: "error",
+            text: `CSV downloaded, but the names were not saved: ${saveError} Pages will greet people without a name until they are saved. Fix the problem and click the button again.`,
+          }
+        : {
+            kind: "ok",
+            text: "Names saved and the CSV downloaded. The links are ready to send.",
+          },
+    );
+    setBusy(false);
   }
 
   const remainingRows = parsed
@@ -247,18 +252,6 @@ export default function Processor() {
               the links or in the responses file.
             </p>
 
-            <div className="configuration">
-              <label>
-                Admin key
-                <input
-                  type="password"
-                  value={adminKey}
-                  autoComplete="off"
-                  onChange={(event) => setAdminKey(event.target.value)}
-                />
-              </label>
-            </div>
-
             <label className="file-input">
               {parsed ? "Choose a different file" : "Choose CSV file"}
               <input
@@ -287,7 +280,6 @@ export default function Processor() {
               </p>
             )}
 
-            {notice && <p>{notice}</p>}
             {error && <p className="processor-error">{error}</p>}
           </div>
         </section>
@@ -348,6 +340,16 @@ export default function Processor() {
                 {busy ? "Saving…" : "Save names & download CSV"}
               </button>
             </div>
+
+            {saveMessage && (
+              <p
+                className={
+                  saveMessage.kind === "error" ? "processor-error" : undefined
+                }
+              >
+                {saveMessage.text}
+              </p>
+            )}
 
             {output && (
               <div className="preview-table-wrap">

@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { isAdminRequest } from "@/lib/admin-auth";
 import {
   saveNames,
   TOKEN_PATTERN,
   type NameEntry,
 } from "@/lib/participant-names";
-
-// Uses the filesystem, so this must run on the Node.js runtime.
-export const runtime = "nodejs";
 
 const MAX_ENTRIES = 50000;
 const MAX_NAME_LENGTH = 100;
@@ -16,10 +12,8 @@ function fail(error: string, status: number) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-// Saves first names for the links the Processor just generated. Admin only.
+// Saves first names for the links the Processor just generated.
 export async function POST(request: Request) {
-  if (!isAdminRequest(request)) return fail("Unauthorized", 401);
-
   let list: unknown;
   try {
     list = (await request.json())?.names;

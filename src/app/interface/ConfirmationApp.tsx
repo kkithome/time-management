@@ -5,7 +5,6 @@ import { downloadWorkshopCalendar, getWorkshopDisplay } from "./calendar";
 
 type Props = {
   condition: "control" | "treatment";
-  // First name for the greeting only; '' when unknown. It is never sent to the server.
   participantName: string;
   participantNumber: string;
   conditionNumber: string;
@@ -31,17 +30,26 @@ export default function ConfirmationApp({
 }: Props) {
   const [attendance, setAttendance] = useState<"yes" | "no" | "">("");
   const [origin, setOrigin] = useState("");
+  const [alreadyAtLocation, setAlreadyAtLocation] = useState<"yes" | "no" | "">(
+    "",
+  );
   const [departureTime, setDepartureTime] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const isTreatment = condition === "treatment";
-  // The extra questions appear only for treatment participants who chose "yes".
   const showPlanQuestions = isTreatment && attendance === "yes";
   const workshop = getWorkshopDisplay();
 
-  // Downloads the .ics file, then tells the server so the response row is marked
-  // calendarDownloaded = 'yes'. Reporting failures never affect the participant.
+  const WORKSHOP_START_TIME = "19:00";
+
+  const isDepartureValid =
+    alreadyAtLocation === "yes" ||
+    (alreadyAtLocation === "no" &&
+      departureTime !== "" &&
+      departureTime < WORKSHOP_START_TIME);
+
+  // Downloads the calendar file and records the download on the server.
   async function handleCalendarDownload() {
     try {
       downloadWorkshopCalendar();
@@ -65,8 +73,18 @@ export default function ConfirmationApp({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     if (!attendance) {
       setError("Please let us know whether you will attend.");
+      return;
+    }
+
+    if (showPlanQuestions && !isDepartureValid) {
+      setError(
+        alreadyAtLocation === ""
+          ? "Please indicate whether you will already be at the workshop location."
+          : "Please enter a departure time before 7:00 PM.",
+      );
       return;
     }
 
@@ -74,7 +92,6 @@ export default function ConfirmationApp({
     setError(null);
 
     try {
-      // participantName is display-only and deliberately excluded from the request.
       const response = await fetch("/interface/submit", {
         method: "POST",
         headers: {
@@ -85,10 +102,19 @@ export default function ConfirmationApp({
           conditionNumber,
           condition,
           attendance,
-          // Only treatment participants who said "yes" are asked these; undefined is dropped
-          // by JSON.stringify, so answers typed before switching to "No" are never sent.
-          origin: showPlanQuestions ? origin : undefined,
-          departureTime: showPlanQuestions ? departureTime : undefined,
+
+          origin:
+            showPlanQuestions && alreadyAtLocation === "no"
+              ? origin
+              : undefined,
+
+          alreadyAtLocation: showPlanQuestions ? alreadyAtLocation : undefined,
+
+          departureTime: showPlanQuestions
+            ? alreadyAtLocation === "yes"
+              ? "N/A"
+              : departureTime
+            : undefined,
         }),
       });
 
@@ -101,7 +127,6 @@ export default function ConfirmationApp({
 
       setStatus("submitted");
 
-      // Only treatment participants who said "yes" get the calendar file.
       if (isTreatment && attendance === "yes") {
         void handleCalendarDownload();
       }
@@ -123,6 +148,7 @@ export default function ConfirmationApp({
             <div className="success-check" aria-hidden="true">
               ✓
             </div>
+
             <h1 className="greeting">
               Thank you
               {participantName && (
@@ -131,6 +157,7 @@ export default function ConfirmationApp({
                 </>
               )}
             </h1>
+
             <p className="intro" style={{ margin: "0 auto" }}>
               Your response has been recorded.
               {attendance === "yes" &&
@@ -146,10 +173,12 @@ export default function ConfirmationApp({
                       <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
                   </span>
+
                   <strong>
                     Add the workshop to your calendar so you don&apos;t miss it.
                   </strong>
                 </div>
+
                 <button type="button" onClick={handleCalendarDownload}>
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" />
@@ -192,14 +221,17 @@ export default function ConfirmationApp({
             <span>{workshop.month}</span>
             <strong>{workshop.day}</strong>
           </div>
+
           <div className="event-copy">
             <h2>{workshop.title}</h2>
             <p>{workshop.description}</p>
+
             <dl>
               <div>
                 <dt>When</dt>
                 <dd>{workshop.when}</dd>
               </div>
+
               <div>
                 <dt>Where</dt>
                 <dd>{workshop.location}</dd>
@@ -230,24 +262,99 @@ export default function ConfirmationApp({
 
             {showPlanQuestions && (
               <div className="plan-section">
-                <label>
-                  Where will you be coming from?
-                  <input
-                    type="text"
-                    value={origin}
-                    onChange={(event) => setOrigin(event.target.value)}
-                    maxLength={200}
-                  />
-                </label>
+                <fieldset>
+                  <legend>Will you already be at the workshop location?</legend>
 
-                <label>
-                  What time will you leave for the workshop?
-                  <input
-                    type="time"
-                    value={departureTime}
-                    onChange={(event) => setDepartureTime(event.target.value)}
-                  />
-                </label>
+                  <label
+                    className={`choice${
+                      alreadyAtLocation === "yes" ? " selected" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="alreadyAtLocation"
+                      value="yes"
+                      checked={alreadyAtLocation === "yes"}
+                      onChange={() => {
+                        setAlreadyAtLocation("yes");
+                        setDepartureTime("");
+                        setOrigin("");
+                      }}
+                    />
+                    <span className="radio" />
+                    <span>
+                      <strong>
+                        I will already be at the workshop location.
+                      </strong>
+                    </span>
+                  </label>
+
+                  <label
+                    className={`choice${
+                      alreadyAtLocation === "no" ? " selected" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="alreadyAtLocation"
+                      value="no"
+                      checked={alreadyAtLocation === "no"}
+                      onChange={() => setAlreadyAtLocation("no")}
+                    />
+                    <span className="radio" />
+                    <span>
+                      <strong>No, I&apos;ll be traveling there</strong>
+                    </span>
+                  </label>
+                </fieldset>
+
+                {alreadyAtLocation === "yes" && (
+                  <div className="plan-section">
+                    <p>
+                      <strong>
+                        What time will you leave for the workshop?
+                      </strong>
+                    </p>
+                    <p>N/A — you will already be at the workshop location.</p>
+                  </div>
+                )}
+
+                {alreadyAtLocation === "no" && (
+                  <>
+                    <label className="travel-question">
+                      <span>Where will you be coming from?</span>
+                      <input
+                        type="text"
+                        value={origin}
+                        onChange={(event) => setOrigin(event.target.value)}
+                        maxLength={200}
+                      />
+                    </label>
+
+                    <label className="travel-question">
+                      <span>What time will you leave for the workshop?</span>
+                      <input
+                        type="time"
+                        value={departureTime}
+                        max="18:59"
+                        onChange={(event) =>
+                          setDepartureTime(event.target.value)
+                        }
+                        required
+                      />
+                      <small>
+                        Please select a departure time before 7:00 PM.
+                      </small>
+                    </label>
+
+                    {departureTime !== "" &&
+                      departureTime >= WORKSHOP_START_TIME && (
+                        <p className="submission-error" role="alert">
+                          Your departure time must be before 7:00 PM.
+                        </p>
+                      )}
+                  </>
+                )}
               </div>
             )}
 
@@ -271,7 +378,11 @@ export default function ConfirmationApp({
           <button
             type="submit"
             className="submit-button"
-            disabled={!attendance || status === "submitting"}
+            disabled={
+              !attendance ||
+              status === "submitting" ||
+              (showPlanQuestions && !isDepartureValid)
+            }
           >
             {status === "submitting" ? "Submitting…" : "Submit response"}
           </button>
