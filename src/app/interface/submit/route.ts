@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import {
-  saveResponse,
-  DuplicantParticipantError,
-  type AnonymousResponse,
-} from "@/lib/response-csv";
+import { neon } from "@neondatabase/serverless";
 
-const CONDITION_NUMBERS = ["1", "2", "3", "4"] as const;
+type ConditionNumber = "1" | "2" | "3" | "4";
+type Condition = "control" | "treatment";
+type Contact = "preferred" | "non-preferred";
+
+const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2", "3", "4"];
 const MAX_TEXT_LENGTH = 350;
 const WORKSHOP_START_TIME = "19:00";
 
@@ -34,7 +34,24 @@ function optionalText(value: unknown): string | undefined | null {
   return trimmed === "" ? undefined : trimmed;
 }
 
+function isDuplicateError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505"
+  );
+}
+
 export async function POST(request: Request) {
+  // Check database configuration.
+  if (!process.env.DATABASE_URL) {
+    console.error("DATABASE_URL is not configured.");
+    return fail("Database connection is not configured.", 500);
+  }
+
+  const sql = neon(process.env.DATABASE_URL);
+
   let body: Record<string, unknown>;
 
   // Parse request body.
@@ -66,23 +83,20 @@ export async function POST(request: Request) {
 
   if (
     !conditionNumber ||
-    !CONDITION_NUMBERS.includes(
-      conditionNumber as (typeof CONDITION_NUMBERS)[number],
-    )
+    !CONDITION_NUMBERS.includes(conditionNumber as ConditionNumber)
   ) {
     return fail("A valid condition number is required.");
   }
 
-  const validConditionNumber =
-    conditionNumber as AnonymousResponse["conditionNumber"];
+  const validConditionNumber = conditionNumber as ConditionNumber;
 
   // Determine assigned condition and contact preference.
-  const expectedCondition: AnonymousResponse["condition"] =
+  const expectedCondition: Condition =
     validConditionNumber === "1" || validConditionNumber === "2"
       ? "control"
       : "treatment";
 
-  const contact: AnonymousResponse["contact"] =
+  const contact: Contact =
     validConditionNumber === "1" || validConditionNumber === "3"
       ? "preferred"
       : "non-preferred";
@@ -110,7 +124,6 @@ export async function POST(request: Request) {
   let departureTime: string | undefined;
 
   if (requiresPlanQuestions) {
-    // Validate whether participant is already at the location.
     if (alreadyAtLocation !== "yes" && alreadyAtLocation !== "no") {
       return fail(
         "Please indicate whether you will already be at the workshop location.",
@@ -118,7 +131,6 @@ export async function POST(request: Request) {
     }
 
     if (alreadyAtLocation === "yes") {
-      // Participants already at the location must submit N/A.
       if (body.departureTime !== "N/A") {
         return fail(
           'Departure time must be "N/A" if you will already be at the workshop location.',
@@ -127,19 +139,16 @@ export async function POST(request: Request) {
 
       departureTime = "N/A";
     } else {
-      // Participants traveling to the workshop must provide a departure time.
       if (typeof body.departureTime !== "string") {
         return fail("Please provide your departure time.");
       }
 
       const submittedTime = body.departureTime.trim();
 
-      // Validate 24-hour HH:mm format.
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(submittedTime)) {
         return fail("Please provide a valid departure time.");
       }
 
-      // Departure must be earlier than 7:00 PM.
       if (submittedTime >= WORKSHOP_START_TIME) {
         return fail("Your departure time must be before 7:00 PM.");
       }
@@ -158,36 +167,48 @@ export async function POST(request: Request) {
     return fail("Preference does not match the condition number.");
   }
 
-  // Save response.
+  // Save response directly to Neon PostgreSQL.
   try {
-    await saveResponse({
-      participantNumber,
-      conditionNumber: validConditionNumber,
-      condition: expectedCondition,
-      contact,
-      attendance,
-
-      origin:
-        requiresPlanQuestions && alreadyAtLocation === "no"
-          ? origin
-          : undefined,
-
-      alreadyAtLocation: requiresPlanQuestions
-        ? (alreadyAtLocation as "yes" | "no")
-        : undefined,
-
-      departureTime,
-
-      calendarDownloaded:
-        expectedCondition === "treatment" && attendance === "yes"
-          ? "no"
-          : undefined,
-
-      submittedAt: new Date().toISOString(),
-    });
+    await sql`
+      INSERT INTO research_responses (
+        participant_number,
+        condition_number,
+        condition,
+        contact,
+        attendance,
+        origin,
+        already_at_location,
+        departure_time,
+        calendar_downloaded,
+        submitted_at
+      )
+      VALUES (
+        ${participantNumber},
+        ${validConditionNumber},
+        ${expectedCondition},
+        ${contact},
+        ${attendance},
+        ${
+          requiresPlanQuestions && alreadyAtLocation === "no"
+            ? (origin ?? null)
+            : null
+        },
+        ${requiresPlanQuestions ? (alreadyAtLocation as "yes" | "no") : null},
+        ${departureTime ?? null},
+        ${
+          expectedCondition === "treatment" && attendance === "yes"
+            ? "no"
+            : null
+        },
+        ${new Date().toISOString()}
+      )
+    `;
   } catch (error) {
-    if (error instanceof DuplicantParticipantError) {
-      return fail(error.message, 409);
+    if (isDuplicateError(error)) {
+      return fail(
+        "A response has already been submitted for this participant.",
+        409,
+      );
     }
 
     console.error("Failed to save response:", error);

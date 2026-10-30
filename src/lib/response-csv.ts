@@ -1,6 +1,4 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import Papa from "papaparse";
+import { neon } from "@neondatabase/serverless";
 
 export type AnonymousResponse = {
   participantNumber: string;
@@ -15,21 +13,15 @@ export type AnonymousResponse = {
   submittedAt: string;
 };
 
-const Data_DIR = path.join(process.cwd(), "data");
-const CSV_PATH = path.join(Data_DIR, "responses.CSV");
+function getDatabase() {
+  const databaseUrl = process.env.DATABASE_URL;
 
-const COLUMNS: (keyof AnonymousResponse)[] = [
-  "participantNumber",
-  "conditionNumber",
-  "condition",
-  "contact",
-  "attendance",
-  "origin",
-  "alreadyAtLocation",
-  "departureTime",
-  "calendarDownloaded",
-  "submittedAt",
-];
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is missing.");
+  }
+
+  return neon(databaseUrl);
+}
 
 export class DuplicantParticipantError extends Error {
   constructor(participantNumber: string) {
@@ -56,128 +48,82 @@ export class CalendarNotApplicableError extends Error {
   }
 }
 
-let writeQueue = Promise.resolve();
-
-function enqueue(task: () => Promise<void>): Promise<void> {
-  const run = writeQueue.then(task);
-  writeQueue = run.catch(() => undefined);
-  return run;
+function isDuplicateError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505"
+  );
 }
 
-async function ensureDataDir(): Promise<void> {
-  await fs.mkdir(Data_DIR, { recursive: true });
-}
-
-async function readResponses(): Promise<AnonymousResponse[]> {
-  let text: string;
+export async function saveResponse(response: AnonymousResponse): Promise<void> {
+  const sql = getDatabase();
 
   try {
-    text = await fs.readFile(CSV_PATH, "utf8");
+    await sql`
+      INSERT INTO research_responses (
+        participant_number,
+        condition_number,
+        condition,
+        contact,
+        attendance,
+        origin,
+        already_at_location,
+        departure_time,
+        calendar_downloaded,
+        submitted_at
+      )
+      VALUES (
+        ${response.participantNumber},
+        ${response.conditionNumber},
+        ${response.condition},
+        ${response.contact},
+        ${response.attendance},
+        ${response.origin ?? null},
+        ${response.alreadyAtLocation ?? null},
+        ${response.departureTime ?? null},
+        ${response.calendarDownloaded ?? null},
+        ${response.submittedAt}
+      )
+    `;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
+    if (isDuplicateError(error)) {
+      throw new DuplicantParticipantError(response.participantNumber);
     }
     throw error;
   }
-
-  if (!text.trim()) return [];
-
-  const parsed = Papa.parse<Record<string, string>>(text, {
-    header: true,
-    skipEmptyLines: true,
-  });
-
-  if (parsed.errors.length > 0) {
-    throw new Error(`Could not parse ${CSV_PATH}: ${parsed.errors[0].message}`);
-  }
-
-  return parsed.data.map((row) => ({
-    participantNumber: row.participantNumber,
-    conditionNumber:
-      row.conditionNumber as AnonymousResponse["conditionNumber"],
-
-    // Read from the correct CSV columns.
-    condition: row.condition as AnonymousResponse["condition"],
-    contact: row.contact as AnonymousResponse["contact"],
-
-    attendance: row.attendance as AnonymousResponse["attendance"],
-    origin: row.origin || undefined,
-
-    // Older CSV records without this column remain compatible.
-    alreadyAtLocation: (row.alreadyAtLocation ||
-      undefined) as AnonymousResponse["alreadyAtLocation"],
-
-    // "N/A" is preserved as a regular string.
-    departureTime: row.departureTime || undefined,
-
-    calendarDownloaded: (row.calendarDownloaded ||
-      undefined) as AnonymousResponse["calendarDownloaded"],
-
-    submittedAt: row.submittedAt,
-  }));
 }
 
-async function writeResponses(responses: AnonymousResponse[]): Promise<void> {
-  await ensureDataDir();
-
-  const csv = Papa.unparse(
-    {
-      fields: COLUMNS as string[],
-      data: responses.map((response) =>
-        COLUMNS.map((column) => response[column] ?? ""),
-      ),
-    },
-    { newline: "\n" },
-  );
-
-  const tempPath = `${CSV_PATH}.tmp`;
-
-  await fs.writeFile(tempPath, csv + "\n", "utf8");
-  await fs.rename(tempPath, CSV_PATH);
-}
-
-async function appendResponse(response: AnonymousResponse): Promise<void> {
-  const existing = await readResponses();
-
-  if (
-    existing.some((r) => r.participantNumber === response.participantNumber)
-  ) {
-    throw new DuplicantParticipantError(response.participantNumber);
-  }
-
-  await writeResponses([...existing, response]);
-}
-
-async function applyCalendarDownloaded(
+export async function markCalendarDownloaded(
   participantNumber: string,
 ): Promise<void> {
-  const existing = await readResponses();
+  const sql = getDatabase();
 
-  const target = existing.find(
-    (r) => r.participantNumber === participantNumber,
-  );
+  const existing = await sql`
+    SELECT calendar_downloaded
+    FROM research_responses
+    WHERE participant_number = ${participantNumber}
+  `;
 
-  if (!target) {
+  if (existing.length === 0) {
     throw new ParticipantNotFoundError(participantNumber);
   }
 
-  if (!target.calendarDownloaded) {
+  const calendarDownloaded = existing[0].calendar_downloaded;
+
+  if (!calendarDownloaded) {
     throw new CalendarNotApplicableError(participantNumber);
   }
 
-  if (target.calendarDownloaded === "yes") return;
+  if (calendarDownloaded === "yes") {
+    return;
+  }
 
-  target.calendarDownloaded = "yes";
-
-  await writeResponses(existing);
-}
-
-export function saveResponse(response: AnonymousResponse): Promise<void> {
-  return enqueue(() => appendResponse(response));
-}
-
-export function markCalendarDownloaded(
-  participantNumber: string,
-): Promise<void> {
-  return enqueue(() => applyCalendarDownloaded(participantNumber));
+  await sql`
+    UPDATE research_responses
+    SET calendar_downloaded = 'yes'
+    WHERE participant_number = ${participantNumber}
+      AND calendar_downloaded = 'no'
+  `;
 }
