@@ -211,10 +211,16 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error("Failed to save response:", error);
+    const dbError = error as {
+      message?: string;
+      code?: string;
+    };
+
+    console.error("Database submission failed:", {
+      code: dbError.code,
+      message: dbError.message,
+    });
 
     return fail("Could not save your response. Please try again.", 500);
   }
-
-  return NextResponse.json({ ok: true });
 }
