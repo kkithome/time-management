@@ -224,7 +224,8 @@ button {
   font-weight: 700;
 }
 
-.configuration select {
+.configuration select,
+.configuration input {
   width: 100%;
   margin-top: 6px;
   padding: 10px 12px;
