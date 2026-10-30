@@ -7,7 +7,7 @@ type SearchParams = Promise<{
   token?: string;
 }>;
 
-// Reading searchParams is request-time data, so it happens inside <Suspense>.
+
 async function TreatmentContent({
   searchParams,
 }: {
@@ -15,8 +15,6 @@ async function TreatmentContent({
 }) {
   const params = await searchParams;
 
-  // The link carries no name. The first name is looked up on the server from the
-  // link's random token, and is used only for the greeting.
 
   return (
     <ConfirmationApp

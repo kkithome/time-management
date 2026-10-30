@@ -159,8 +159,7 @@ export default function Processor() {
       const group = groupFor(conditionNumber);
       counts[conditionNumber] += 1;
 
-      // Anonymized: the link has no name, only the participant number, the condition
-      // number and a random token the page uses to look up the first name.
+
       const link =
         `${window.location.origin}/interface/${group}` +
         `?participantNumber=${participantNumber}` +
@@ -189,9 +188,7 @@ export default function Processor() {
     URL.revokeObjectURL(url);
   }
 
-  // Always downloads the CSV. It also tries to save first names on the server so the pages
-  // can greet people. If saving fails the CSV is still downloaded (the links work either
-  // way), and the problem is shown next to the button. Saving again is safe to repeat.
+
   async function saveAndDownload() {
     if (!output || !parsed) return;
 
@@ -208,8 +205,6 @@ export default function Processor() {
 
   return (
     <main className="processor-shell">
-      {/* gridTemplateColumns is overridden because there is no logo <img> in the first column.
-          Add your logo as the first child and remove the style prop to restore the 2-column layout. */}
       <header
         className="processor-header"
         style={{ gridTemplateColumns: "1fr" }}
