@@ -230,8 +230,7 @@ export default function Processor() {
         style={{ gridTemplateColumns: "1fr" }}
       >
         <div>
-          <span>Study tools</span>
-          <h1>Participant link generator</h1>
+          <h1>Participant Link Generator</h1>
           <p>
             Upload a participant list and get back a CSV with balanced condition
             assignments and an anonymous link for each person.
@@ -288,7 +287,7 @@ export default function Processor() {
         <section className={`step${parsed ? "" : " disabled-step"}`}>
           <div className="step-number">2</div>
           <div className="step-content">
-            <h2>Choose the name column</h2>
+            <h2>Choose the Name Column</h2>
             <p>
               Only the first name is used, to greet each participant on their
               page. Names are not in the links or in your downloaded file.
@@ -325,7 +324,7 @@ export default function Processor() {
           <div className="step-content">
             <div className="preview-heading">
               <div>
-                <h2>Preview and download</h2>
+                <h2>Preview and Download</h2>
                 <p>
                   {output
                     ? `Condition counts: 1 = ${output.counts["1"]}, 2 = ${output.counts["2"]}, 3 = ${output.counts["3"]}, 4 = ${output.counts["4"]}`
