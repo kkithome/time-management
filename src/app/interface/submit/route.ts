@@ -157,17 +157,17 @@ export async function POST(request: Request) {
     }
   }
 
-  // Verify assigned condition.
+
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
 
-  // Verify contact preference.
+
   if (body.contact !== undefined && body.contact !== contact) {
     return fail("Preference does not match the condition number.");
   }
 
-  // Save response directly to Neon PostgreSQL.
+
   try {
     await sql`
       INSERT INTO research_responses (
@@ -223,4 +223,7 @@ export async function POST(request: Request) {
 
     return fail("Could not save your response. Please try again.", 500);
   }
+    return NextResponse.json({ ok: true });
+
+
 }
