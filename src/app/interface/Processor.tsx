@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import Papa from 'papaparse'
 import { firstName } from './names'
 
 
+const fileInputRef = useRef<HTMLInputElement>(null)
 
 type ConditionCode = '1' | '2' | '3' | '4'
 type Group = 'control' | 'treatment'
@@ -50,6 +51,8 @@ export default function Processor() {
   const [nameColumn, setNameColumn] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+
+
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setParsed(null);
@@ -85,6 +88,13 @@ export default function Processor() {
       rows,
       conditions: shuffle(orderedConditions),
     });
+  }
+
+  function clearParticipants () {
+    setParsed(null)
+    setNameColumn(0)
+    setError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ' '
   }
 
   const output = useMemo(() => {
@@ -183,7 +193,12 @@ export default function Processor() {
 
             <label className="file-input">
               {parsed ? "Choose a different file" : "Choose CSV file"}
-              <input type="file" accept=".csv,text/csv" onChange={handleFile} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFile}
+              />
             </label>
 
             {parsed && (
