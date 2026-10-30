@@ -201,6 +201,18 @@ export default function Processor() {
               />
             </label>
 
+            {(parsed || error) && (
+              <button
+                type="button"
+                className="file-input"
+                style={{ marginLeft: 10 }}
+                onClick={clearParticipants}
+                >
+                  Clear Participants
+
+              </button>
+            )}
+
             {parsed && (
               <p>
                 Loaded <strong>{parsed.rows.length}</strong> participants from{" "}
