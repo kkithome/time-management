@@ -1,4 +1,5 @@
-import { neon } from "@neondatabase/serverless";
+import Papa from "papaparse";
+import { ensureSchema, getSql } from "./db";
 
 export type AnonymousResponse = {
   participantNumber: string;
@@ -13,17 +14,7 @@ export type AnonymousResponse = {
   submittedAt: string;
 };
 
-function getDatabase() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is missing.");
-  }
-
-  return neon(databaseUrl);
-}
-
-export class DuplicantParticipantError extends Error {
+export class DuplicateParticipantError extends Error {
   constructor(participantNumber: string) {
     super(
       `Participant number ${participantNumber} has already submitted a response.`,
@@ -31,6 +22,10 @@ export class DuplicantParticipantError extends Error {
     this.name = "DuplicateParticipantError";
   }
 }
+
+// The old file spelled this class "DuplicantParticipantError". Kept so any import
+// that still uses the old spelling keeps working.
+export const DuplicantParticipantError = DuplicateParticipantError;
 
 export class ParticipantNotFoundError extends Error {
   constructor(participantNumber: string) {
@@ -48,6 +43,7 @@ export class CalendarNotApplicableError extends Error {
   }
 }
 
+// Postgres error code 23505 = unique violation (participant already submitted).
 function isDuplicateError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -58,7 +54,9 @@ function isDuplicateError(error: unknown): boolean {
 }
 
 export async function saveResponse(response: AnonymousResponse): Promise<void> {
-  const sql = getDatabase();
+  // Creates the tables if this is a brand-new database.
+  await ensureSchema();
+  const sql = getSql();
 
   try {
     await sql`
@@ -89,7 +87,7 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
     `;
   } catch (error) {
     if (isDuplicateError(error)) {
-      throw new DuplicantParticipantError(response.participantNumber);
+      throw new DuplicateParticipantError(response.participantNumber);
     }
     throw error;
   }
@@ -98,19 +96,23 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
 export async function markCalendarDownloaded(
   participantNumber: string,
 ): Promise<void> {
-  const sql = getDatabase();
+  await ensureSchema();
+  const sql = getSql();
 
   const existing = await sql`
     SELECT calendar_downloaded
     FROM research_responses
     WHERE participant_number = ${participantNumber}
   `;
+  const existingRows = (Array.isArray(existing) ? existing : existing.rows) as Array<
+    Record<string, any>
+  >;
 
-  if (existing.length === 0) {
+  if (existingRows.length === 0) {
     throw new ParticipantNotFoundError(participantNumber);
   }
 
-  const calendarDownloaded = existing[0].calendar_downloaded;
+  const calendarDownloaded = existingRows[0].calendar_downloaded;
 
   if (!calendarDownloaded) {
     throw new CalendarNotApplicableError(participantNumber);
@@ -126,4 +128,53 @@ export async function markCalendarDownloaded(
     WHERE participant_number = ${participantNumber}
       AND calendar_downloaded = 'no'
   `;
+}
+
+const CSV_FIELDS = [
+  "participantNumber",
+  "conditionNumber",
+  "condition",
+  "contact",
+  "attendance",
+  "origin",
+  "alreadyAtLocation",
+  "departureTime",
+  "calendarDownloaded",
+  "submittedAt",
+];
+
+// Builds the responses CSV for the /interface/responses.csv download.
+// Returns null when there are no responses yet.
+export async function exportResponsesCsv(): Promise<string | null> {
+  await ensureSchema();
+  const sql = getSql();
+
+  const rows = await sql`
+    SELECT participant_number, condition_number, condition, contact, attendance, origin,
+           already_at_location, departure_time, calendar_downloaded, submitted_at
+    FROM research_responses
+    ORDER BY submitted_at, participant_number
+  `;
+
+  const responseRows = (Array.isArray(rows) ? rows : rows.rows) as Array<
+    Record<string, any>
+  >;
+  if (responseRows.length === 0) return null;
+
+  const data = responseRows.map((r) => [
+    r.participant_number,
+    r.condition_number,
+    r.condition,
+    r.contact,
+    r.attendance,
+    r.origin ?? "",
+    r.already_at_location ?? "",
+    r.departure_time ?? "",
+    r.calendar_downloaded ?? "",
+    r.submitted_at instanceof Date
+      ? r.submitted_at.toISOString()
+      : String(r.submitted_at ?? ""),
+  ]);
+
+  return Papa.unparse({ fields: CSV_FIELDS, data }, { newline: "\n" }) + "\n";
 }
