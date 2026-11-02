@@ -34,6 +34,7 @@ function optionalText(value: unknown): string | undefined | null {
   return trimmed === "" ? undefined : trimmed;
 }
 
+// Postgres error code 23505 = unique violation (participant already submitted).
 function isDuplicateError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -90,7 +91,9 @@ export async function POST(request: Request) {
 
   const validConditionNumber = conditionNumber as ConditionNumber;
 
-  // Determine assigned condition and contact preference.
+  // Derive the condition and contact preference on the server, never from the browser.
+  // 1 = preferred control, 2 = non-preferred control,
+  // 3 = preferred treatment, 4 = non-preferred treatment
   const expectedCondition: Condition =
     validConditionNumber === "1" || validConditionNumber === "2"
       ? "control"
@@ -115,7 +118,7 @@ export async function POST(request: Request) {
     return fail("Origin must be text of 350 characters or less.");
   }
 
-  // Planning questions only apply to treatment participants attending.
+  // Planning questions only apply to treatment participants who are attending.
   const requiresPlanQuestions =
     expectedCondition === "treatment" && attendance === "yes";
 
@@ -157,31 +160,18 @@ export async function POST(request: Request) {
     }
   }
 
-
+  // Reject browser-supplied values that disagree with the derived ones.
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
 
-
   if (body.contact !== undefined && body.contact !== contact) {
-    return fail("Preference does not match the condition number.");
+    return fail("Contact preference does not match the condition number.");
   }
 
-
+  // Save the anonymous response. No participant name is ever read or stored here.
   try {
-  const dbInfo = await sql`
-    SELECT
-      current_database() AS database_name,
-      current_schema() AS schema_name,
-      current_setting('search_path') AS search_path,
-      to_regclass('public.research_responses') AS public_table,
-      to_regclass('research_responses') AS visible_table
-  `;
-
-  console.log("Database diagnostics:", dbInfo[0]);
-
-  await sql`
-    INSERT INTO research_responses (
+    await sql`
       INSERT INTO research_responses (
         participant_number,
         condition_number,
@@ -228,6 +218,8 @@ export async function POST(request: Request) {
       code?: string;
     };
 
+    // Shows up in Vercel -> Logs. The code tells you what went wrong:
+    // 42601 = SQL syntax error, 42P01 = table missing, 42703 = column name mismatch.
     console.error("Database submission failed:", {
       code: dbError.code,
       message: dbError.message,
@@ -235,7 +227,6 @@ export async function POST(request: Request) {
 
     return fail("Could not save your response. Please try again.", 500);
   }
-    return NextResponse.json({ ok: true });
 
-
+  return NextResponse.json({ ok: true });
 }
