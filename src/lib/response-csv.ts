@@ -3,7 +3,8 @@ import { getSql } from "./db";
 
 export type AnonymousResponse = {
   participantNumber: string;
-  conditionNumber: "1" | "2" | "3" | "4";
+  eventTitle: string;
+  conditionNumber: "1" | "2";
   condition: "control" | "treatment";
   contact: "preferred" | "non-preferred";
   attendance: "yes" | "no";
@@ -60,6 +61,7 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
     await sql`
       INSERT INTO research_responses (
         participant_number,
+        event_title,
         condition_number,
         condition,
         contact,
@@ -72,6 +74,7 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
       )
       VALUES (
         ${response.participantNumber},
+        ${response.eventTitle},
         ${response.conditionNumber},
         ${response.condition},
         ${response.contact},
@@ -87,6 +90,7 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
     if (isDuplicateError(error)) {
       throw new DuplicateParticipantError(response.participantNumber);
     }
+
     throw error;
   }
 }
@@ -130,6 +134,7 @@ export async function markCalendarDownloaded(
 
 const CSV_FIELDS = [
   "participantNumber",
+  "eventTitle",
   "conditionNumber",
   "condition",
   "contact",
@@ -147,14 +152,25 @@ export async function exportResponsesCsv(): Promise<string | null> {
   const sql = getSql();
 
   const rows = await sql`
-    SELECT participant_number, condition_number, condition, contact, attendance, origin,
-           already_at_location, departure_time, calendar_downloaded, submitted_at
+    SELECT
+      participant_number,
+      event_title,
+      condition_number,
+      condition,
+      contact,
+      attendance,
+      origin,
+      already_at_location,
+      departure_time,
+      calendar_downloaded,
+      submitted_at
     FROM research_responses
     ORDER BY submitted_at, participant_number
   `;
 
   const responseRows = (Array.isArray(rows) ? rows : rows.rows) as Array<{
     participant_number: string;
+    event_title: string | null;
     condition_number: string;
     condition: string;
     contact: string;
@@ -165,10 +181,12 @@ export async function exportResponsesCsv(): Promise<string | null> {
     calendar_downloaded: string | null;
     submitted_at: Date | string | null;
   }>;
+
   if (responseRows.length === 0) return null;
 
   const data = responseRows.map((r) => [
     r.participant_number,
+    r.event_title ?? "",
     r.condition_number,
     r.condition,
     r.contact,

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 
-type ConditionNumber = "1" | "2"
+type ConditionNumber = "1" | "2";
 type Condition = "control" | "treatment";
-
+type Contact = "preferred" | "non-preferred";
 
 const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2"];
 const MAX_TEXT_LENGTH = 350;
@@ -79,6 +79,17 @@ export async function POST(request: Request) {
     return fail("A valid participant number is required.");
   }
 
+  // Validate event title.
+  const eventTitle = optionalText(body.eventTitle);
+
+  if (!eventTitle) {
+    return fail("A valid event title is required.");
+  }
+
+  if (eventTitle === null) {
+    return fail("Event title must be text of 350 characters or less.");
+  }
+
   // Validate condition number.
   const conditionNumber = toTrimmedString(body.conditionNumber);
 
@@ -91,13 +102,16 @@ export async function POST(request: Request) {
 
   const validConditionNumber = conditionNumber as ConditionNumber;
 
-  // Derive the condition and contact preference on the server, never from the browser.
-  // 1 = preferred control, 2 = non-preferred control,
-  // 3 = preferred treatment, 4 = non-preferred treatment
+  // Derive condition and contact preference on the server.
+  // 1 = preferred control
+  // 2 = non-preferred control
   const expectedCondition: Condition =
     validConditionNumber === "1" || validConditionNumber === "2"
       ? "control"
       : "treatment";
+
+  const expectedContact: Contact =
+    validConditionNumber === "1" ? "preferred" : "non-preferred";
 
   // Validate attendance.
   const attendance = body.attendance;
@@ -155,15 +169,22 @@ export async function POST(request: Request) {
     }
   }
 
-  // Reject browser-supplied values that disagree with the derived ones.
+  // Reject browser-supplied values that disagree with server-derived values.
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
-  // Save the anonymous response. No participant name is ever read or stored here.
+
+  if (body.contact !== undefined && body.contact !== expectedContact) {
+    return fail("Contact preference does not match the condition number.");
+  }
+
+  // Save the anonymous response.
+  // No participant name is ever read or stored here.
   try {
     await sql`
       INSERT INTO research_responses (
         participant_number,
+        event_title,
         condition_number,
         condition,
         contact,
@@ -176,8 +197,10 @@ export async function POST(request: Request) {
       )
       VALUES (
         ${participantNumber},
+        ${eventTitle},
         ${validConditionNumber},
-        ${expectedCondition},,
+        ${expectedCondition},
+        ${expectedContact},
         ${attendance},
         ${
           requiresPlanQuestions && alreadyAtLocation === "no"
@@ -196,10 +219,11 @@ export async function POST(request: Request) {
     `;
 
     const host = new URL(process.env.DATABASE_URL!).hostname;
+
     const [{ count }] =
       await sql`SELECT count(*)::int AS count FROM research_responses`;
+
     console.log("Saved response. Database host:", host, "rows now:", count);
-    // 
   } catch (error) {
     if (isDuplicateError(error)) {
       return fail(
@@ -213,8 +237,6 @@ export async function POST(request: Request) {
       code?: string;
     };
 
-    // Shows up in Vercel -> Logs. The code tells you what went wrong:
-    // 42601 = SQL syntax error, 42P01 = table missing, 42703 = column name mismatch.
     console.error("Database submission failed:", {
       code: dbError.code,
       message: dbError.message,
