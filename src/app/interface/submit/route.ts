@@ -205,6 +205,12 @@ export async function POST(request: Request) {
         ${new Date().toISOString()}
       )
     `;
+
+    const host = new URL(process.env.DATABASE_URL!).hostname;
+    const [{ count }] =
+      await sql`SELECT count(*)::int AS count FROM research_responses`;
+    console.log("Saved response. Database host:", host, "rows now:", count);
+    // 
   } catch (error) {
     if (isDuplicateError(error)) {
       return fail(
