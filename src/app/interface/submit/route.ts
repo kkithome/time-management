@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 
-type ConditionNumber = "1" | "2" | "3" | "4";
+type ConditionNumber = "1" | "2"
 type Condition = "control" | "treatment";
-type Contact = "preferred" | "non-preferred";
 
-const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2", "3", "4"];
+
+const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2"];
 const MAX_TEXT_LENGTH = 350;
 const WORKSHOP_START_TIME = "19:00";
 
@@ -99,11 +99,6 @@ export async function POST(request: Request) {
       ? "control"
       : "treatment";
 
-  const contact: Contact =
-    validConditionNumber === "1" || validConditionNumber === "3"
-      ? "preferred"
-      : "non-preferred";
-
   // Validate attendance.
   const attendance = body.attendance;
 
@@ -164,11 +159,6 @@ export async function POST(request: Request) {
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
-
-  if (body.contact !== undefined && body.contact !== contact) {
-    return fail("Contact preference does not match the condition number.");
-  }
-
   // Save the anonymous response. No participant name is ever read or stored here.
   try {
     await sql`
@@ -187,8 +177,7 @@ export async function POST(request: Request) {
       VALUES (
         ${participantNumber},
         ${validConditionNumber},
-        ${expectedCondition},
-        ${contact},
+        ${expectedCondition},,
         ${attendance},
         ${
           requiresPlanQuestions && alreadyAtLocation === "no"

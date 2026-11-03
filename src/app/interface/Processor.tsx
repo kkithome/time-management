@@ -5,7 +5,7 @@ import Link from "next/link";
 import Papa from "papaparse";
 
 
-type ConditionCode = "1" | "2" | "3" | "4";
+type ConditionCode = "1" | "2";
 type Group = "control" | "treatment";
 
 type Parsed = {
@@ -27,9 +27,9 @@ type PreviewRow = {
 
 const PREVIEW_ROWS = 5;
 
-// Conditions 1 and 2 are control; 3 and 4 are treatment.
+
 function groupFor(conditionNumber: ConditionCode): Group {
-  return conditionNumber === "1" || conditionNumber === "2"
+  return conditionNumber === "1"
     ? "control"
     : "treatment";
 }
@@ -93,7 +93,7 @@ export default function Processor() {
     // then shuffling randomizes which recipient gets which condition.
     const orderedConditions = Array.from(
       { length: rows.length },
-      (_, index) => String((index % 4) + 1) as ConditionCode,
+      (_, index) => String((index % 2) + 1) as ConditionCode,
     );
 
     setNameColumn(guessedNameColumn >= 0 ? guessedNameColumn : 0);
@@ -123,8 +123,6 @@ export default function Processor() {
     const counts: Record<ConditionCode, number> = {
       "1": 0,
       "2": 0,
-      "3": 0,
-      "4": 0,
     };
     const preview: PreviewRow[] = [];
 
@@ -273,7 +271,7 @@ export default function Processor() {
                 <h2>Preview and Download</h2>
                 <p>
                   {output
-                    ? `Condition counts: 1 = ${output.counts["1"]}, 2 = ${output.counts["2"]}, 3 = ${output.counts["3"]}, 4 = ${output.counts["4"]}`
+                    ? `Condition counts: 1 = ${output.counts["1"]}, 2 = ${output.counts["2"]}`
                     : "Upload a file to see the generated links."}
                 </p>
               </div>
