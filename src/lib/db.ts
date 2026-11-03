@@ -39,11 +39,6 @@ export function ensureSchema(): Promise<void> {
           calendar_downloaded text,
           submitted_at        timestamptz NOT NULL
         )`;
-      await db`
-        CREATE TABLE IF NOT EXISTS participant_names (
-          token      text PRIMARY KEY,
-          first_name text NOT NULL
-        )`;
     })().catch((error) => {
       schemaReady = null; // try again on the next request
       throw error;
