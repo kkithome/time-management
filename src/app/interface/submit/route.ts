@@ -5,7 +5,6 @@ import { EVENT_TITLE } from "@/lib/event-config";
 type ConditionNumber = "1" | "2";
 type Condition = "control" | "treatment";
 
-const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2"];
 const MAX_TEXT_LENGTH = 350;
 const WORKSHOP_START_TIME = "19:00";
 
@@ -86,10 +85,7 @@ export async function POST(request: Request) {
 
   const conditionNumber = toTrimmedString(body.conditionNumber);
 
-  if (
-    !conditionNumber ||
-    !CONDITION_NUMBERS.includes(conditionNumber as ConditionNumber)
-  ) {
+  if (conditionNumber !== "1" && conditionNumber !== "2") {
     return fail("A valid condition number is required.");
   }
 
@@ -115,7 +111,7 @@ export async function POST(request: Request) {
     expectedCondition === "treatment" && attendance === "yes";
 
   const alreadyAtLocation = body.alreadyAtLocation;
-  let departureTime: string | undefined;
+  let departureTime: string | null = null;
 
   if (requiresPlanQuestions) {
     if (alreadyAtLocation !== "yes" && alreadyAtLocation !== "no") {
@@ -155,6 +151,17 @@ export async function POST(request: Request) {
     return fail("Condition does not match the condition number.");
   }
 
+  const originValue =
+    requiresPlanQuestions && alreadyAtLocation === "no"
+      ? (origin ?? null)
+      : null;
+
+  const alreadyAtLocationValue = requiresPlanQuestions
+    ? (alreadyAtLocation as "yes" | "no")
+    : null;
+
+  const calendarDownloadedValue = requiresPlanQuestions ? "no" : null;
+
   try {
     await sql`
       INSERT INTO research_responses (
@@ -175,24 +182,19 @@ export async function POST(request: Request) {
         ${validConditionNumber},
         ${expectedCondition},
         ${attendance},
-        ${
-          requiresPlanQuestions && alreadyAtLocation === "no"
-            ? (origin ?? null)
-            : null
-        },
-        ${requiresPlanQuestions ? (alreadyAtLocation as "yes" | "no") : null},
-        ${departureTime ?? null},
-        ${requiresPlanQuestions ? "no" : null},
+        ${originValue},
+        ${alreadyAtLocationValue},
+        ${departureTime},
+        ${calendarDownloadedValue},
         ${new Date().toISOString()}
       )
     `;
 
-    const host = new URL(process.env.DATABASE_URL).hostname;
-    const [{ count }] = await sql`
-      SELECT count(*)::int AS count FROM research_responses
-    `;
-
-    console.log("Saved response.", "Database host:", host, "Rows now:", count);
+    console.log("Research response successfully inserted.", {
+      conditionNumber: validConditionNumber,
+      condition: expectedCondition,
+      attendance,
+    });
   } catch (error) {
     const dbError = error as {
       message?: string;
@@ -201,7 +203,7 @@ export async function POST(request: Request) {
       constraint?: string;
     };
 
-    console.error("Database submission failed:", {
+    console.error("Research response INSERT failed:", {
       code: dbError.code,
       message: dbError.message,
       detail: dbError.detail,
@@ -215,12 +217,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Temporary diagnostic response.
+    // Temporary diagnostics.
     if (process.env.DEBUG_SUBMISSIONS === "true") {
       return NextResponse.json(
         {
           ok: false,
-          error: "Database submission failed",
+          error: "Database INSERT failed",
           code: dbError.code ?? null,
           message: dbError.message ?? String(error),
           detail: dbError.detail ?? null,
