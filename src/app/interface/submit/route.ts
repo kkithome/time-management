@@ -194,6 +194,20 @@ export async function POST(request: Request) {
 
     console.log("Saved response.", "Database host:", host, "Rows now:", count);
   } catch (error) {
+    const dbError = error as {
+      message?: string;
+      code?: string;
+      detail?: string;
+      constraint?: string;
+    };
+
+    console.error("Database submission failed:", {
+      code: dbError.code,
+      message: dbError.message,
+      detail: dbError.detail,
+      constraint: dbError.constraint,
+    });
+
     if (isDuplicateError(error)) {
       return fail(
         "A response has already been submitted for this participant.",
@@ -201,12 +215,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const dbError = error as { message?: string; code?: string };
-
-    console.error("Database submission failed:", {
-      code: dbError.code,
-      message: dbError.message,
-    });
+    // Temporary diagnostic response.
+    if (process.env.DEBUG_SUBMISSIONS === "true") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Database submission failed",
+          code: dbError.code ?? null,
+          message: dbError.message ?? String(error),
+          detail: dbError.detail ?? null,
+          constraint: dbError.constraint ?? null,
+        },
+        { status: 500 },
+      );
+    }
 
     return fail("Could not save your response. Please try again.", 500);
   }
