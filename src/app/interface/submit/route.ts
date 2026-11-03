@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { EVENT_TITLE } from "@/lib/event-config";
 
 type ConditionNumber = "1" | "2";
 type Condition = "control" | "treatment";
-type Contact = "preferred" | "non-preferred";
 
 const CONDITION_NUMBERS: ConditionNumber[] = ["1", "2"];
 const MAX_TEXT_LENGTH = 350;
@@ -34,7 +34,6 @@ function optionalText(value: unknown): string | undefined | null {
   return trimmed === "" ? undefined : trimmed;
 }
 
-// Postgres error code 23505 = unique violation (participant already submitted).
 function isDuplicateError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -45,7 +44,6 @@ function isDuplicateError(error: unknown): boolean {
 }
 
 export async function POST(request: Request) {
-  // Check database configuration.
   if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL is not configured.");
     return fail("Database connection is not configured.", 500);
@@ -55,7 +53,6 @@ export async function POST(request: Request) {
 
   let body: Record<string, unknown>;
 
-  // Parse request body.
   try {
     const parsed = await request.json();
 
@@ -72,25 +69,21 @@ export async function POST(request: Request) {
     return fail("Request body must be valid JSON.");
   }
 
-  // Validate participant number.
   const participantNumber = toTrimmedString(body.participantNumber);
 
   if (!participantNumber || participantNumber.length > MAX_TEXT_LENGTH) {
     return fail("A valid participant number is required.");
   }
 
-  // Validate event title.
-  const eventTitle = optionalText(body.eventTitle);
-
-  if (!eventTitle) {
-    return fail("A valid event title is required.");
+  if (
+    !EVENT_TITLE ||
+    EVENT_TITLE.trim().length === 0 ||
+    EVENT_TITLE.length > MAX_TEXT_LENGTH
+  ) {
+    console.error("EVENT_TITLE is missing or invalid.");
+    return fail("Event configuration is invalid.", 500);
   }
 
-  if (eventTitle === null) {
-    return fail("Event title must be text of 350 characters or less.");
-  }
-
-  // Validate condition number.
   const conditionNumber = toTrimmedString(body.conditionNumber);
 
   if (
@@ -102,37 +95,28 @@ export async function POST(request: Request) {
 
   const validConditionNumber = conditionNumber as ConditionNumber;
 
-  // Derive condition and contact preference on the server.
-  // 1 = preferred control
-  // 2 = non-preferred control
+  // Condition 1 = control; Condition 2 = treatment.
   const expectedCondition: Condition =
-    validConditionNumber === "1" || validConditionNumber === "2"
-      ? "control"
-      : "treatment";
+    validConditionNumber === "1" ? "control" : "treatment";
 
-  const expectedContact: Contact =
-    validConditionNumber === "1" ? "preferred" : "non-preferred";
-
-  // Validate attendance.
   const attendance = body.attendance;
 
   if (attendance !== "yes" && attendance !== "no") {
     return fail('Attendance must be "yes" or "no".');
   }
 
-  // Validate origin.
   const origin = optionalText(body.origin);
 
   if (origin === null) {
     return fail("Origin must be text of 350 characters or less.");
   }
 
-  // Planning questions only apply to treatment participants who are attending.
+  // Only treatment participants attending the workshop receive
+  // the additional planning questions.
   const requiresPlanQuestions =
     expectedCondition === "treatment" && attendance === "yes";
 
   const alreadyAtLocation = body.alreadyAtLocation;
-
   let departureTime: string | undefined;
 
   if (requiresPlanQuestions) {
@@ -169,17 +153,12 @@ export async function POST(request: Request) {
     }
   }
 
-  // Reject browser-supplied values that disagree with server-derived values.
+  // If the frontend sends a condition value, verify that it matches
+  // the condition number. The server remains the source of truth.
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
 
-  if (body.contact !== undefined && body.contact !== expectedContact) {
-    return fail("Contact preference does not match the condition number.");
-  }
-
-  // Save the anonymous response.
-  // No participant name is ever read or stored here.
   try {
     await sql`
       INSERT INTO research_responses (
@@ -187,7 +166,6 @@ export async function POST(request: Request) {
         event_title,
         condition_number,
         condition,
-        contact,
         attendance,
         origin,
         already_at_location,
@@ -197,10 +175,9 @@ export async function POST(request: Request) {
       )
       VALUES (
         ${participantNumber},
-        ${eventTitle},
+        ${EVENT_TITLE},
         ${validConditionNumber},
         ${expectedCondition},
-        ${expectedContact},
         ${attendance},
         ${
           requiresPlanQuestions && alreadyAtLocation === "no"
@@ -209,19 +186,17 @@ export async function POST(request: Request) {
         },
         ${requiresPlanQuestions ? (alreadyAtLocation as "yes" | "no") : null},
         ${departureTime ?? null},
-        ${
-          expectedCondition === "treatment" && attendance === "yes"
-            ? "no"
-            : null
-        },
+        ${requiresPlanQuestions ? "no" : null},
         ${new Date().toISOString()}
       )
     `;
 
-    const host = new URL(process.env.DATABASE_URL!).hostname;
+    const host = new URL(process.env.DATABASE_URL).hostname;
 
-    const [{ count }] =
-      await sql`SELECT count(*)::int AS count FROM research_responses`;
+    const [{ count }] = await sql`
+      SELECT count(*)::int AS count
+      FROM research_responses
+    `;
 
     console.log("Saved response. Database host:", host, "rows now:", count);
   } catch (error) {
@@ -232,10 +207,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const dbError = error as {
-      message?: string;
-      code?: string;
-    };
+    const dbError = error as { message?: string; code?: string };
 
     console.error("Database submission failed:", {
       code: dbError.code,

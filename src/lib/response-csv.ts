@@ -1,12 +1,11 @@
 import Papa from "papaparse";
 import { getSql } from "./db";
+import { EVENT_TITLE } from "./event-config";
 
 export type AnonymousResponse = {
   participantNumber: string;
-  eventTitle: string;
   conditionNumber: "1" | "2";
   condition: "control" | "treatment";
-  contact: "preferred" | "non-preferred";
   attendance: "yes" | "no";
   origin?: string;
   alreadyAtLocation?: "yes" | "no";
@@ -24,8 +23,7 @@ export class DuplicateParticipantError extends Error {
   }
 }
 
-// The old file spelled this class "DuplicantParticipantError". Kept so any import
-// that still uses the old spelling keeps working.
+// Kept for compatibility with any existing imports using the old spelling.
 export const DuplicantParticipantError = DuplicateParticipantError;
 
 export class ParticipantNotFoundError extends Error {
@@ -44,7 +42,6 @@ export class CalendarNotApplicableError extends Error {
   }
 }
 
-// Postgres error code 23505 = unique violation (participant already submitted).
 function isDuplicateError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -64,7 +61,6 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
         event_title,
         condition_number,
         condition,
-        contact,
         attendance,
         origin,
         already_at_location,
@@ -74,10 +70,9 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
       )
       VALUES (
         ${response.participantNumber},
-        ${response.eventTitle},
+        ${EVENT_TITLE},
         ${response.conditionNumber},
         ${response.condition},
-        ${response.contact},
         ${response.attendance},
         ${response.origin ?? null},
         ${response.alreadyAtLocation ?? null},
@@ -120,9 +115,7 @@ export async function markCalendarDownloaded(
     throw new CalendarNotApplicableError(participantNumber);
   }
 
-  if (calendarDownloaded === "yes") {
-    return;
-  }
+  if (calendarDownloaded === "yes") return;
 
   await sql`
     UPDATE research_responses
@@ -137,7 +130,6 @@ const CSV_FIELDS = [
   "eventTitle",
   "conditionNumber",
   "condition",
-  "contact",
   "attendance",
   "origin",
   "alreadyAtLocation",
@@ -146,8 +138,6 @@ const CSV_FIELDS = [
   "submittedAt",
 ];
 
-// Builds the responses CSV for the /interface/responses.csv download.
-// Returns null when there are no responses yet.
 export async function exportResponsesCsv(): Promise<string | null> {
   const sql = getSql();
 
@@ -157,7 +147,6 @@ export async function exportResponsesCsv(): Promise<string | null> {
       event_title,
       condition_number,
       condition,
-      contact,
       attendance,
       origin,
       already_at_location,
@@ -173,7 +162,6 @@ export async function exportResponsesCsv(): Promise<string | null> {
     event_title: string | null;
     condition_number: string;
     condition: string;
-    contact: string;
     attendance: string;
     origin: string | null;
     already_at_location: string | null;
@@ -189,7 +177,6 @@ export async function exportResponsesCsv(): Promise<string | null> {
     r.event_title ?? "",
     r.condition_number,
     r.condition,
-    r.contact,
     r.attendance,
     r.origin ?? "",
     r.already_at_location ?? "",
