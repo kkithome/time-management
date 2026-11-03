@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import { ensureSchema, getSql } from "./db";
+import { getSql } from "./db";
 
 export type AnonymousResponse = {
   participantNumber: string;
@@ -54,8 +54,6 @@ function isDuplicateError(error: unknown): boolean {
 }
 
 export async function saveResponse(response: AnonymousResponse): Promise<void> {
-  // Creates the tables if this is a brand-new database.
-  await ensureSchema();
   const sql = getSql();
 
   try {
@@ -96,7 +94,6 @@ export async function saveResponse(response: AnonymousResponse): Promise<void> {
 export async function markCalendarDownloaded(
   participantNumber: string,
 ): Promise<void> {
-  await ensureSchema();
   const sql = getSql();
 
   const existing = await sql`
@@ -104,15 +101,12 @@ export async function markCalendarDownloaded(
     FROM research_responses
     WHERE participant_number = ${participantNumber}
   `;
-  const existingRows = (Array.isArray(existing) ? existing : existing.rows) as Array<
-    Record<string, any>
-  >;
 
-  if (existingRows.length === 0) {
+  if (existing.length === 0) {
     throw new ParticipantNotFoundError(participantNumber);
   }
 
-  const calendarDownloaded = existingRows[0].calendar_downloaded;
+  const calendarDownloaded = existing[0].calendar_downloaded;
 
   if (!calendarDownloaded) {
     throw new CalendarNotApplicableError(participantNumber);
@@ -146,7 +140,6 @@ const CSV_FIELDS = [
 // Builds the responses CSV for the /interface/responses.csv download.
 // Returns null when there are no responses yet.
 export async function exportResponsesCsv(): Promise<string | null> {
-  await ensureSchema();
   const sql = getSql();
 
   const rows = await sql`
@@ -156,12 +149,9 @@ export async function exportResponsesCsv(): Promise<string | null> {
     ORDER BY submitted_at, participant_number
   `;
 
-  const responseRows = (Array.isArray(rows) ? rows : rows.rows) as Array<
-    Record<string, any>
-  >;
-  if (responseRows.length === 0) return null;
+  if (rows.length === 0) return null;
 
-  const data = responseRows.map((r) => [
+  const data = rows.map((r) => [
     r.participant_number,
     r.condition_number,
     r.condition,

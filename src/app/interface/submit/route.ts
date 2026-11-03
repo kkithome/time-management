@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { ensureSchema } from "@/lib/db";
 
 type ConditionNumber = "1" | "2" | "3" | "4";
 type Condition = "control" | "treatment";
@@ -172,9 +171,6 @@ export async function POST(request: Request) {
 
   // Save the anonymous response. No participant name is ever read or stored here.
   try {
-    // Creates the tables if this is a brand-new database.
-    await ensureSchema();
-
     await sql`
       INSERT INTO research_responses (
         participant_number,
