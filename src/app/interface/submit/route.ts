@@ -49,6 +49,15 @@ export async function POST(request: Request) {
     return fail("Database connection is not configured.", 500);
   }
 
+  if (
+    typeof EVENT_TITLE !== "string" ||
+    !EVENT_TITLE.trim() ||
+    EVENT_TITLE.length > MAX_TEXT_LENGTH
+  ) {
+    console.error("EVENT_TITLE is missing or invalid.");
+    return fail("Event configuration is invalid.", 500);
+  }
+
   const sql = neon(process.env.DATABASE_URL);
 
   let body: Record<string, unknown>;
@@ -73,15 +82,6 @@ export async function POST(request: Request) {
 
   if (!participantNumber || participantNumber.length > MAX_TEXT_LENGTH) {
     return fail("A valid participant number is required.");
-  }
-
-  if (
-    !EVENT_TITLE ||
-    EVENT_TITLE.trim().length === 0 ||
-    EVENT_TITLE.length > MAX_TEXT_LENGTH
-  ) {
-    console.error("EVENT_TITLE is missing or invalid.");
-    return fail("Event configuration is invalid.", 500);
   }
 
   const conditionNumber = toTrimmedString(body.conditionNumber);
@@ -111,8 +111,6 @@ export async function POST(request: Request) {
     return fail("Origin must be text of 350 characters or less.");
   }
 
-  // Only treatment participants attending the workshop receive
-  // the additional planning questions.
   const requiresPlanQuestions =
     expectedCondition === "treatment" && attendance === "yes";
 
@@ -153,8 +151,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // If the frontend sends a condition value, verify that it matches
-  // the condition number. The server remains the source of truth.
   if (body.condition !== undefined && body.condition !== expectedCondition) {
     return fail("Condition does not match the condition number.");
   }
@@ -175,7 +171,7 @@ export async function POST(request: Request) {
       )
       VALUES (
         ${participantNumber},
-        ${EVENT_TITLE},
+        ${EVENT_TITLE.trim()},
         ${validConditionNumber},
         ${expectedCondition},
         ${attendance},
@@ -192,13 +188,11 @@ export async function POST(request: Request) {
     `;
 
     const host = new URL(process.env.DATABASE_URL).hostname;
-
     const [{ count }] = await sql`
-      SELECT count(*)::int AS count
-      FROM research_responses
+      SELECT count(*)::int AS count FROM research_responses
     `;
 
-    console.log("Saved response. Database host:", host, "rows now:", count);
+    console.log("Saved response.", "Database host:", host, "Rows now:", count);
   } catch (error) {
     if (isDuplicateError(error)) {
       return fail(
