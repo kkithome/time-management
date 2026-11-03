@@ -102,11 +102,15 @@ export async function markCalendarDownloaded(
     WHERE participant_number = ${participantNumber}
   `;
 
-  if (existing.length === 0) {
+  const existingRows = (
+    Array.isArray(existing) ? existing : existing.rows
+  ) as Array<{ calendar_downloaded: string | null }>;
+
+  if (existingRows.length === 0) {
     throw new ParticipantNotFoundError(participantNumber);
   }
 
-  const calendarDownloaded = existing[0].calendar_downloaded;
+  const calendarDownloaded = existingRows[0].calendar_downloaded;
 
   if (!calendarDownloaded) {
     throw new CalendarNotApplicableError(participantNumber);
@@ -149,9 +153,21 @@ export async function exportResponsesCsv(): Promise<string | null> {
     ORDER BY submitted_at, participant_number
   `;
 
-  if (rows.length === 0) return null;
+  const responseRows = (Array.isArray(rows) ? rows : rows.rows) as Array<{
+    participant_number: string;
+    condition_number: string;
+    condition: string;
+    contact: string;
+    attendance: string;
+    origin: string | null;
+    already_at_location: string | null;
+    departure_time: string | null;
+    calendar_downloaded: string | null;
+    submitted_at: Date | string | null;
+  }>;
+  if (responseRows.length === 0) return null;
 
-  const data = rows.map((r) => [
+  const data = responseRows.map((r) => [
     r.participant_number,
     r.condition_number,
     r.condition,
