@@ -1,10 +1,10 @@
 export const WORKSHOP = {
-  title: "Time and Task Management Workshop",
+  title: "Perkins Steak Night",
   description:
-    "Join the Curricular Resource Center’s academic coaches for a workshop on managing your time and getting your work under control for the rest of the term. You’ll learn how to plan out your weeks, figure out what actually needs your attention first, and break big assignments into steps you can realistically tackle. Come as you are and leave with a system you can start using right away. We’ll have light snacks, too.",
-  location: "CRC Lounge - 167 Angell Street",
-  start: "20261104T190000",
-  end: "20261104T203000",
+    "Come prepare and enjoy a steak dinner with potatoes and vegetables!",
+  location: "Perkins First Floor Lounge",
+  start: "20261114T180000",
+  end: "20261114T193000",
   timezone: "America/New_York",
 };
 
