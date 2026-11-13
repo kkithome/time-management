@@ -1,1 +1,1 @@
-export const EVENT_TITLE = "unpacking-midterms";
+export const EVENT_TITLE = "steak-night";

@@ -1,10 +1,10 @@
 export const WORKSHOP = {
-  title: "Unpacking Midterms Workshop",
+  title: "Perkins Steak Night",
   description:
-    "Join us to learn more about dissecting midterms & developing study strategies going forward",
-  location: "CRC Lounge - 167 Angell Street",
-  start: "20261109T180000",
-  end: "20261109T193000",
+    "Come prepare and enjoy a steak dinner with potatoes and vegetables!",
+  location: "Perkins First Floor Lounge",
+  start: "20261114T180000",
+  end: "20261114T193000",
   timezone: "America/New_York",
 };
 
